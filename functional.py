@@ -66,6 +66,11 @@ def flip_square(sq):
 
 
 
+
+
+
+
+
 def evaluatePos(self):
 
         # We need to evaluate the current position for white, and then the current position for black
