@@ -4,10 +4,162 @@ import chess
 import pickle
 import chess.engine
 import chess.polyglot
+import sys
+import time
 mainEngine = chess.engine.SimpleEngine.popen_uci("/usr/games/stockfish")
 
 calls = 0
 hits = 0
+
+
+
+class Manager:
+
+
+    def __init__(self, mainBoard=None):
+
+        self.__MAINBOARD = mainBoard
+
+        self.__MAINENGINE = chess.engine.SimpleEngine.popen_uci("/usr/games/stockfish")
+
+        self.__tpcache = {}
+        self.__CACHEHITS = 0
+        self.__CALLS = 0
+        self.__STOP_DEPTH = 2
+        self.__LAST_START_TIME = None
+        self.__TIME_LIMIT = 2
+
+    @property
+    def MAINBOARD(self):
+        return self.__MAINBOARD
+
+    @property
+    def LAST_START_TIME(self):
+        return self.__LAST_START_TIME
+
+    @LAST_START_TIME.setter
+    def LAST_START_TIME(self, val):
+        self.__LAST_START_TIME = val
+
+    def flip_square(self, sq):
+        return sq^0x38
+
+
+    def stockfishEval(self):
+
+        board_info = self.__MAINENGINE.analyse(self.__MAINBOARD, chess.engine.Limit(depth=self.__STOP_DEPTH))
+        return board_info["score"].relative.score(mate_score=1000000)
+
+    def __check_time(self):
+        return time.time() - self.__LAST_START_TIME > self.__TIME_LIMIT
+
+    def __basic_minimax(self, depth, maxWhite):
+
+        if self.__check_time():
+            return -1e8 if maxWhite else 1e8
+
+        if depth==self.__STOP_DEPTH or not self.MAINBOARD.legal_moves:
+            final_score = self.stockfishEval()
+            self.__tpcache[MAINBOARD.epd()] = final_score
+            return final_score
+
+
+        best_score = -1e8 if maxWhite else 1e8
+        for new_move in self.MAINBOARD.legal_moves:
+
+            self.MAINBOARD.push(new_move)
+
+            got = self.__tpcache.get(MAINBOARD.epd(), None)
+
+            if got is None:
+
+                pot_score = self.__basic_minimax(depth - 1, ~maxWhite)
+            else:
+                pot_score = got
+            self.MAINBOARD.pop()
+            try:
+                if maxWhite:
+                    # Then we're trying to find the best move for white
+                    if pot_score > best_score:
+                        best_score = pot_score
+                else:
+                    if pot_score < best_score:
+                        best_score = pot_score
+            except Exception as e:
+                print(e, pot_score, best_score)
+                print(self.MAINBOARD)
+                print("FAILED FOR UNKNOWN REASON")
+                print("TERMINATING ENGINE BINARY")
+                sys.exit(1)
+
+        self.__tpcache[self.MAINBOARD.epd()] = best_score
+        return best_score
+
+    def basic_move(self):
+        # Looking for the best move for the current turn of the board
+        cur_turn = int(MAINBOARD.turn)
+
+        best_move = None
+        best_score = -1e8 if cur_turn else 1e8
+
+        for cur_move in MAINBOARD.legal_moves:
+
+            self.MAINBOARD.push(cur_move)
+            cdepth = self.__STOP_DEPTH+1
+            self.LAST_START_TIME = time.time()
+
+            while self.__check_time():
+                self.__basic_minimax(cdepth, 1-cur_turn)
+                cdepth += 1
+
+            new_score = self.__tpcache[MAINBOARD.epd()]
+
+            # If cur turn is true, then we are trying to maximise for white
+
+            if cur_turn and new_score > best_score:
+                best_score = new_score
+                best_move = cur_move
+            elif not cur_turn and new_score < best_score:
+                best_score = new_score
+                best_move = cur_move
+            self.MAINBOARD.pop()
+
+        print("CHOSEN", best_move, "WITH SCORE", best_score)
+        return best_move
+
+def get_basic_move():
+    #Looking for the best move for the current turn of the board
+    cur_turn = int(MAINBOARD.turn)
+
+
+
+    best_move = None
+    best_score = -1e8 if cur_turn else 1e8
+
+    for cur_move in MAINBOARD.legal_moves:
+
+        MAINBOARD.push(cur_move)
+
+        minimaxBasic(3, 1 - cur_turn)
+
+
+        new_score = tpcache[MAINBOARD.epd()]
+        print(cur_move, new_score, "CACHED", len(tpcache), "WITH", CALLS, "FUNCTION CALLS AND", CACHEHITS, "CACHE HITS")
+
+        #If cur turn is true, then we are trying to maximise for white
+
+        if cur_turn and new_score > best_score:
+            best_score = new_score
+            best_move = cur_move
+        elif not cur_turn and new_score < best_score:
+            best_score = new_score
+            best_move = cur_move
+        MAINBOARD.pop()
+
+    print("CHOSEN", best_move, "WITH SCORE", best_score)
+    MAINBOARD.push(best_move)
+
+
 def flip_square(sq):
     return sq^0x38
 
@@ -28,45 +180,6 @@ MAINBOARD = chess.Board()
 TESTBOARD = chess.Board()
 CALLS, CACHEHITS = 0,0
 
-
-
-def minimaxBasic(depth, maxWhite):
-    global MAINBOARD
-    if depth==1 or not MAINBOARD.legal_moves:
-
-        final_score = stockfishEval(MAINBOARD)
-        tpcache[MAINBOARD.epd()] = final_score
-        return final_score
-
-    #Then we need to check for each legal move, we need to calculate the best and worst scores for that move
-    best_score = -1e8 if maxWhite else 1e8
-    for new_move in MAINBOARD.legal_moves:
-
-        #Check if we can go down here
-        MAINBOARD.push(new_move)
-
-        got = tpcache.get(MAINBOARD.epd(), None)
-
-        if got is None:
-
-            pot_score = minimaxBasic(depth-1, ~maxWhite)
-        else:
-            pot_score = got
-        MAINBOARD.pop()
-        try:
-            if maxWhite:
-                #Then we're trying to find the best move for white
-                if pot_score > best_score:
-                    best_score = pot_score
-            else:
-                if pot_score < best_score:
-                    best_score = pot_score
-        except Exception as e:
-            print(e, pot_score, best_score)
-            print(MAINBOARD)
-            input()
-    tpcache[MAINBOARD.epd()] = best_score
-    return best_score
 
 def minimaxAlphaBeta(depth, maxWhite, alpha, beta):
     global MAINBOARD,CALLS, CACHEHITS
@@ -123,37 +236,7 @@ def minimaxAlphaBeta(depth, maxWhite, alpha, beta):
 TESTSCORE  = stockfishEval(TESTBOARD)
 
 
-def get_basic_move():
-    #Looking for the best move for the current turn of the board
-    cur_turn = int(MAINBOARD.turn)
 
-
-
-    best_move = None
-    best_score = -1e8 if cur_turn else 1e8
-
-    for cur_move in MAINBOARD.legal_moves:
-
-        MAINBOARD.push(cur_move)
-
-        minimaxBasic(3, 1 - cur_turn)
-
-
-        new_score = tpcache[MAINBOARD.epd()]
-        print(cur_move, new_score, "CACHED", len(tpcache), "WITH", CALLS, "FUNCTION CALLS AND", CACHEHITS, "CACHE HITS")
-
-        #If cur turn is true, then we are trying to maximise for white
-
-        if cur_turn and new_score > best_score:
-            best_score = new_score
-            best_move = cur_move
-        elif not cur_turn and new_score < best_score:
-            best_score = new_score
-            best_move = cur_move
-        MAINBOARD.pop()
-
-    print("CHOSEN", best_move, "WITH SCORE", best_score)
-    MAINBOARD.push(best_move)
 
 
 
